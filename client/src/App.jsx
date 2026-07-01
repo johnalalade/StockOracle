@@ -72,9 +72,9 @@ export default function App() {
         <div className="empty">
           <div className="big">🔮</div>
           <p>Select a Nigerian stock above to generate a hybrid Buy / Sell prediction.</p>
-          <p className="muted" style={{ fontSize: 13 }}>
+          {/* <p className="muted" style={{ fontSize: 13 }}>
             Combines LSTM-style technical indicators with LLM-scored news sentiment, fused into one signal.
-          </p>
+          </p> */}
         </div>
       )}
 
