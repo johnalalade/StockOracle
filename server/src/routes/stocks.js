@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getEquities, getPriceHistory, getCompanyNews, resolveName } from '../services/DataCollector.js';
+import { getMarketSource } from '../providers/ngxMarketProvider.js';
 import { computeIndicators } from '../services/TechnicalIndicatorEngine.js';
 
 const router = Router();
@@ -12,7 +13,7 @@ router.get('/', async (req, res, next) => {
     const filtered = q
       ? list.filter((e) => e.ticker.toLowerCase().includes(q) || e.name.toLowerCase().includes(q))
       : list;
-    res.json({ count: filtered.length, equities: filtered });
+    res.json({ count: filtered.length, source: getMarketSource(), equities: filtered });
   } catch (err) {
     next(err);
   }

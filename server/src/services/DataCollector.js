@@ -34,7 +34,19 @@ export async function resolveName(ticker) {
  * full (deepest available) cleaned series.
  */
 export async function getPriceHistory(ticker) {
-  const t = await fetchTicker(ticker);
+  let t;
+  try {
+    t = await fetchTicker(ticker);
+  } catch (err) {
+    // Live source unreachable (e.g. blocked from this host) and no seed exists.
+    const e = new Error(
+      `Price data for ${ticker.toUpperCase()} is currently unavailable ` +
+        `(live NGX source unreachable, and this ticker isn't in the cached snapshot). ` +
+        `Try one of the major stocks (e.g. GTCO, ZENITHBANK, DANGCEM, MTNN).`
+    );
+    e.status = 503;
+    throw e;
+  }
   if (t.bars?.length) historyStore.merge(ticker, t.bars);
   // The persisted series is the union of every scrape we've ever done.
   const merged = cleanBars(historyStore.get(ticker));
@@ -45,6 +57,7 @@ export async function getPriceHistory(ticker) {
     sector: t.sector,
     price: t.price,
     bars,
+    source: t.source || 'live',
   };
 }
 

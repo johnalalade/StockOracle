@@ -55,6 +55,7 @@ export async function predict(ticker, { newsLimit = 20 } = {}) {
     company: name,
     sector: history.sector,
     asOf: latestDay,
+    dataSource: history.source || 'live',
     quote: {
       price: history.price,
       previousClose: history.bars.length > 1 ? history.bars[history.bars.length - 2].close : null,

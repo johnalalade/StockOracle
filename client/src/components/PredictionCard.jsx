@@ -28,6 +28,11 @@ export default function PredictionCard({ result }) {
         </div>
         <div className="muted" style={{ fontSize: 13, marginTop: -4 }}>
           {company}{sector ? ` · ${sector}` : ''} · as of {result.asOf}
+          {result.dataSource === 'cached' && (
+            <span title="Live NGX price scraping is unavailable from this host; prices are from a bundled snapshot. News sentiment is still live.">
+              {' '}· 📦 cached prices
+            </span>
+          )}
         </div>
 
         <Meter

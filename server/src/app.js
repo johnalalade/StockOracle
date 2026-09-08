@@ -4,6 +4,7 @@ import { hasLLM, config } from './config.js';
 import { logger } from './utils/logger.js';
 import stocksRouter from './routes/stocks.js';
 import predictRouter from './routes/predict.js';
+import debugRouter from './routes/debug.js';
 
 export function createApp() {
   const app = express();
@@ -25,6 +26,7 @@ export function createApp() {
 
   app.use('/api/stocks', stocksRouter);
   app.use('/api/predict', predictRouter);
+  app.use('/api/debug', debugRouter);
 
   // 404
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

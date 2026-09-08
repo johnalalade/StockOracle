@@ -15,11 +15,15 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [predicting, setPredicting] = useState(false);
   const [error, setError] = useState(null);
+  const [source, setSource] = useState('live');
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => {});
     api.stocks()
-      .then((d) => setEquities(d.equities))
+      .then((d) => {
+        setEquities(d.equities);
+        if (d.source) setSource(d.source);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setListLoading(false));
   }, []);
@@ -48,7 +52,13 @@ export default function App() {
           </div>
         </div>
         <div className="badges">
-          <span className="badge live">Live NGX data</span>
+          {source === 'cached' ? (
+            <span className="badge" title="Live scraping is unavailable from this host; serving a bundled NGX snapshot.">
+              📦 Cached NGX snapshot
+            </span>
+          ) : (
+            <span className="badge live">Live NGX data</span>
+          )}
           {health && (
             <span className={`badge ${health.llm.startsWith('enabled') ? 'llm' : ''}`}>
               {health.llm.startsWith('enabled') ? '🤖 LLM analysis' : '🔤 Heuristic mode'}

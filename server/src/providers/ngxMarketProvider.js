@@ -2,10 +2,16 @@ import * as cheerio from 'cheerio';
 import { fetchText, TTLCache } from '../utils/http.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { seedEquities, seedTicker } from '../seed/index.js';
 
 const BASE = 'https://afx.kwayisi.org/ngx';
 const listCache = new TTLCache(config.marketCacheMs);
 const tickerCache = new TTLCache(config.marketCacheMs);
+
+// Tracks whether the most recent market fetch used live scraping or the
+// bundled seed snapshot, so the API/UI can be honest about the data source.
+let marketSource = 'live';
+export const getMarketSource = () => marketSource;
 
 const num = (s) => {
   if (s == null) return null;
@@ -59,6 +65,15 @@ export async function fetchEquityList() {
     const byTicker = new Map();
     for (const e of equities) if (!byTicker.has(e.ticker)) byTicker.set(e.ticker, e);
     const list = [...byTicker.values()].sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+    // Live scraping can fail entirely (e.g. the source blocks a serverless
+    // datacenter IP). Fall back to the bundled snapshot so the app still works.
+    if (list.length === 0) {
+      marketSource = 'cached';
+      logger.warn(`Live equity list empty; serving ${seedEquities.length} seeded equities`);
+      return seedEquities;
+    }
+    marketSource = 'live';
     logger.info(`Fetched ${list.length} NGX equities from AFX`);
     return list;
   });
@@ -71,8 +86,33 @@ export async function fetchEquityList() {
  */
 export async function fetchTicker(ticker) {
   const slug = ticker.toLowerCase();
+  const upper = ticker.toUpperCase();
+
+  // Fall back to the bundled snapshot when live scraping fails or is empty.
+  const useSeed = (reason) => {
+    const seed = seedTicker(upper);
+    if (!seed) return null;
+    logger.warn(`Ticker ${upper}: ${reason}; serving seeded history (${seed.bars.length} bars)`);
+    const last = seed.bars[seed.bars.length - 1];
+    return {
+      ticker: upper,
+      name: seed.name || upper,
+      sector: seed.sector || null,
+      price: last ? last.close : null,
+      bars: seed.bars,
+      source: 'cached',
+    };
+  };
+
   return tickerCache.wrap(slug, async () => {
-    const html = await fetchText(`${BASE}/${slug}.html`);
+    let html;
+    try {
+      html = await fetchText(`${BASE}/${slug}.html`);
+    } catch (err) {
+      const seeded = useSeed(`live fetch failed (${err.message})`);
+      if (seeded) return seeded;
+      throw err;
+    }
     const $ = cheerio.load(html);
 
     const heading = $('h1').first().text().trim(); // "GTCO - Guaranty Trust Holding"
@@ -109,13 +149,21 @@ export async function fetchTicker(ticker) {
     });
 
     bars.sort((a, b) => a.date.localeCompare(b.date));
+
+    // No rows parsed (source blocked or HTML changed) → seed fallback.
+    if (bars.length === 0) {
+      const seeded = useSeed('live page returned no price rows');
+      if (seeded) return seeded;
+    }
+
     const last = bars[bars.length - 1];
     return {
-      ticker: ticker.toUpperCase(),
+      ticker: upper,
       name,
       sector,
       price: last ? last.close : null,
       bars,
+      source: 'live',
     };
   });
 }
