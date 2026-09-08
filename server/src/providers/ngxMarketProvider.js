@@ -21,18 +21,9 @@ const num = (s) => {
 export async function fetchEquityList() {
   return listCache.wrap('list', async () => {
     const equities = [];
-    // AFX paginates (~page=1..N). Pull the first few pages to cover the market.
-    for (let page = 1; page <= 6; page += 1) {
-      const url = page === 1 ? `${BASE}/` : `${BASE}/?page=${page}`;
-      let html;
-      try {
-        html = await fetchText(url);
-      } catch (err) {
-        logger.warn(`equity list page ${page} failed: ${err.message}`);
-        break;
-      }
+    const parsePage = (html) => {
       const $ = cheerio.load(html);
-      let rowsOnPage = 0;
+      const rows = [];
       $('table tbody tr').each((_, tr) => {
         const cells = $(tr).find('td');
         if (cells.length < 5) return;
@@ -42,17 +33,28 @@ export async function fetchEquityList() {
         const ticker = $(cells[0]).text().trim().toUpperCase();
         const name = $(cells[1]).text().trim();
         if (!ticker || !name) return;
-        equities.push({
+        rows.push({
           ticker,
           name,
           volume: num($(cells[2]).text()),
           price: num($(cells[3]).text()),
           change: num($(cells[4]).text()),
         });
-        rowsOnPage += 1;
       });
-      if (rowsOnPage === 0) break;
-    }
+      return rows;
+    };
+
+    // AFX paginates (~6 pages cover the market). Fetch them in parallel to
+    // stay well under serverless timeouts; skip any page that fails.
+    const pages = [1, 2, 3, 4, 5, 6];
+    const results = await Promise.allSettled(
+      pages.map((page) => fetchText(page === 1 ? `${BASE}/` : `${BASE}/?page=${page}`))
+    );
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') equities.push(...parsePage(r.value));
+      else logger.warn(`equity list page ${pages[i]} failed: ${r.reason?.message}`);
+    });
+
     // De-duplicate by ticker (pages can overlap).
     const byTicker = new Map();
     for (const e of equities) if (!byTicker.has(e.ticker)) byTicker.set(e.ticker, e);

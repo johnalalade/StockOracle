@@ -4,7 +4,11 @@ import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.resolve(__dirname, '../../data');
+// On Vercel (and other serverless hosts) the app filesystem is read-only;
+// only /tmp is writable, so persist there. Locally, use the repo data dir.
+const DATA_DIR = process.env.VERCEL
+  ? '/tmp/stockoracle-data'
+  : path.resolve(__dirname, '../../data');
 const FILE = path.join(DATA_DIR, 'history.json');
 
 /**
