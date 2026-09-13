@@ -9,7 +9,8 @@
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
-    "start": "npm --prefix server start"
+    "start": "npm --prefix server start",
+    "seed:refresh": "npm --prefix server run seed:refresh"
   },
   "dependencies": {
     "cheerio": "1.0.0-rc.12",

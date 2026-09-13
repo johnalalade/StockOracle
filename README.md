@@ -113,6 +113,42 @@ LSTM later (without touching the fusion layer) once the history store has accumu
 
 ---
 
+## Data freshness & getting live NGX data (important)
+
+**The catch:** the free live price source (AFX) **blocks datacenter IP ranges** — Vercel, Render,
+GitHub runners, etc. — while serving normal residential connections fine. And no free market-data
+API covers the NGX (verified: Twelve Data returns 0 Nigerian symbols; Alpha Vantage / FMP have no
+NGX coverage). So on Vercel, live scraping fails and the app serves a **bundled snapshot** with a
+"📦 Cached NGX snapshot" badge. **News/sentiment is always live** (Google News works from Vercel).
+
+**Refreshing the snapshot (covers all listed tickers):** run this from your own machine (a
+residential IP AFX will serve), then commit + redeploy:
+
+```bash
+npm run seed:refresh              # refresh the whole NGX list + histories
+npm run seed:refresh -- GTCO MTNN # or just specific tickers
+```
+
+It writes `server/src/seed/{equities,history}.js`, only ever *adding* coverage (safe to re-run to
+fill gaps). Commit those files and Vercel redeploys with the fresh snapshot.
+
+**If you want truly live data for every ticker, pick one:**
+
+| Option | Live? | All tickers? | Cost | Notes |
+| ------ | ----- | ------------ | ---- | ----- |
+| **Snapshot refresh** (`seed:refresh`, above) | Daily-ish (when you run it) | ✅ | Free | All-on-Vercel, no extra infra. Simplest. |
+| **Paid market-data API** (e.g. **EODHD**, exchange `XNSA`) | ✅ real-time-ish | ✅ | ~$20+/mo | Datacenter-friendly. Wire as a provider tried before AFX. Verify NGX plan coverage. |
+| **Run the backend on a residential/unblocked host** | ✅ | ✅ | Free–low | Only works from an IP AFX doesn't block (most datacenters are blocked). |
+
+---
+
+## Theme
+
+Light and dark mode. The toggle (☀️/🌙) is in the header; the choice is saved to `localStorage`
+and defaults to your OS colour-scheme on first visit.
+
+---
+
 ## Disclaimer
 StockOracle is an **educational decision-support tool, not financial advice**. Predictions are
 probabilistic and derived from public NGX price data and news sentiment. Always do your own

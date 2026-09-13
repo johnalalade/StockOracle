@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react';
 import { api } from './lib/api.js';
+
+/** Initial theme: saved preference, else the OS colour-scheme, else dark. */
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem('stockoracle-theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches) {
+    return 'light';
+  }
+  return 'dark';
+}
+
 import StockPicker from './components/StockPicker.jsx';
 import PredictionCard from './components/PredictionCard.jsx';
 import PriceChart from './components/PriceChart.jsx';
@@ -16,6 +31,19 @@ export default function App() {
   const [predicting, setPredicting] = useState(false);
   const [error, setError] = useState(null);
   const [source, setSource] = useState('live');
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  // Apply + persist the theme on the document root.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('stockoracle-theme', theme);
+    } catch {
+      /* ignore storage errors (private mode, etc.) */
+    }
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => {});
@@ -64,6 +92,14 @@ export default function App() {
               {health.llm.startsWith('enabled') ? '🤖 LLM analysis' : '🔤 Heuristic mode'}
             </span>
           )}
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            aria-label="Toggle colour theme"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
         </div>
       </header>
 
@@ -94,7 +130,7 @@ export default function App() {
 
           <div className="card">
             <h3>Price · Moving Average · Bollinger Bands</h3>
-            <PriceChart series={result.series} />
+            <PriceChart series={result.series} theme={theme} />
           </div>
 
           <div className="grid grid-2">

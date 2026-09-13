@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StockOracle — NGX Hybrid Predictor</title>
     <meta name="description" content="Hybrid technical + fundamental (LLM) stock predictions for the Nigerian Exchange." />
+    <script>
+      // Set the theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var saved = localStorage.getItem('stockoracle-theme');
+          var t = saved === 'light' || saved === 'dark'
+            ? saved
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = t;
+        } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

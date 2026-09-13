@@ -7,7 +7,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "seed:refresh": "node scripts/refresh-seed.mjs"
   },
   "dependencies": {
     "cheerio": "1.0.0-rc.12",
