@@ -81,11 +81,13 @@ export default function App() {
         </div>
         <div className="badges">
           {source === 'cached' ? (
-            <span className="badge" title="Live scraping is unavailable from this host; serving a bundled NGX snapshot.">
+            <span className="badge" title="Live data unavailable from this host; serving the bundled NGX snapshot. News sentiment is still live.">
               📦 Cached NGX snapshot
             </span>
           ) : (
-            <span className="badge live">Live NGX data</span>
+            <span className="badge live" title={source === 'eodhd' ? 'Live prices via EODHD' : 'Live prices via AFX'}>
+              Live NGX data{source === 'eodhd' ? ' · EODHD' : ''}
+            </span>
           )}
           {health && (
             <span className={`badge ${health.llm.startsWith('enabled') ? 'llm' : ''}`}>

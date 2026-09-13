@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { hasLLM, config } from './config.js';
+import { hasLLM, hasEODHD, config } from './config.js';
 import { logger } from './utils/logger.js';
 import stocksRouter from './routes/stocks.js';
 import predictRouter from './routes/predict.js';
@@ -20,6 +20,9 @@ export function createApp() {
     res.json({
       status: 'ok',
       llm: hasLLM ? `enabled (${config.llmModel})` : 'disabled (heuristic fallback)',
+      marketProvider: hasEODHD
+        ? `EODHD (${config.eodhdExchange}) → AFX → snapshot`
+        : 'AFX → snapshot',
       time: new Date().toISOString(),
     });
   });

@@ -1,7 +1,41 @@
 import { Router } from 'express';
-import { config } from '../config.js';
+import { config, hasEODHD } from '../config.js';
 
 const router = Router();
+
+/**
+ * GET /api/debug/eodhd — verify the EODHD key + exchange code by fetching a
+ * known ticker. Reveals nothing secret; returns counts and a short error, if any.
+ */
+router.get('/eodhd', async (req, res) => {
+  if (!hasEODHD) return res.json({ configured: false, hint: 'Set EODHD_API_KEY to enable.' });
+  const ticker = (req.query.ticker || 'GTCO').toString().toUpperCase();
+  const symbol = `${ticker}.${config.eodhdExchange}`;
+  const url =
+    `https://eodhd.com/api/eod/${encodeURIComponent(symbol)}?api_token=${config.eodhdApiKey}` +
+    `&fmt=json&period=d&order=a&from=${new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)}`;
+  try {
+    const r = await fetch(url);
+    const body = await r.text();
+    let bars = null;
+    try {
+      const j = JSON.parse(body);
+      bars = Array.isArray(j) ? j.length : null;
+    } catch {
+      /* non-JSON */
+    }
+    res.json({
+      configured: true,
+      exchange: config.eodhdExchange,
+      symbol,
+      status: r.status,
+      bars,
+      snippet: body.slice(0, 200),
+    });
+  } catch (err) {
+    res.json({ configured: true, symbol, error: err.message });
+  }
+});
 
 /**
  * Diagnostic endpoint: shows exactly what the server (e.g. a Vercel function)

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getEquities, getPriceHistory, getCompanyNews, resolveName } from '../services/DataCollector.js';
-import { getMarketSource } from '../providers/ngxMarketProvider.js';
+import { getMarketSource } from '../services/marketData.js';
 import { computeIndicators } from '../services/TechnicalIndicatorEngine.js';
 
 const router = Router();

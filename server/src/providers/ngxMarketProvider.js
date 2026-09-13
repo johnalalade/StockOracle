@@ -2,16 +2,17 @@ import * as cheerio from 'cheerio';
 import { fetchText, TTLCache } from '../utils/http.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { seedEquities, seedTicker } from '../seed/index.js';
+
+/**
+ * AFX (kwayisi) provider — free NGX scraper. Used as a secondary source behind
+ * EODHD (AFX blocks datacenter IPs and only exposes ~10 close-only days, so it
+ * mainly serves local/residential runs and the seed-refresh script). Pure: it
+ * returns [] / throws on failure; the marketData orchestrator owns fallbacks.
+ */
 
 const BASE = 'https://afx.kwayisi.org/ngx';
 const listCache = new TTLCache(config.marketCacheMs);
 const tickerCache = new TTLCache(config.marketCacheMs);
-
-// Tracks whether the most recent market fetch used live scraping or the
-// bundled seed snapshot, so the API/UI can be honest about the data source.
-let marketSource = 'live';
-export const getMarketSource = () => marketSource;
 
 const num = (s) => {
   if (s == null) return null;
@@ -20,11 +21,10 @@ const num = (s) => {
 };
 
 /**
- * Scrape the full NGX equities list.
- * Row layout on AFX: Ticker | Name | Volume | Price | Change
- * @returns {Promise<Array<{ticker,name,volume,price,change}>>}
+ * Scrape the full NGX equities list. Row layout: Ticker | Name | Volume | Price | Change
+ * @returns {Promise<Array<{ticker,name,volume,price,change}>>} empty on failure
  */
-export async function fetchEquityList() {
+export async function fetchEquityListAFX() {
   return listCache.wrap('list', async () => {
     const equities = [];
     const parsePage = (html) => {
@@ -34,7 +34,6 @@ export async function fetchEquityList() {
         const cells = $(tr).find('td');
         if (cells.length < 5) return;
         const link = $(cells[0]).find('a').attr('href') || '';
-        // Only data rows link to /ngx/<slug>.html
         if (!/\/ngx\/[a-z0-9.]+\.html/i.test(link)) return;
         const ticker = $(cells[0]).text().trim().toUpperCase();
         const name = $(cells[1]).text().trim();
@@ -50,75 +49,38 @@ export async function fetchEquityList() {
       return rows;
     };
 
-    // AFX paginates (~6 pages cover the market). Fetch them in parallel to
-    // stay well under serverless timeouts; skip any page that fails.
+    // AFX paginates (~6 pages cover the market). Fetch in parallel; skip failures.
     const pages = [1, 2, 3, 4, 5, 6];
     const results = await Promise.allSettled(
       pages.map((page) => fetchText(page === 1 ? `${BASE}/` : `${BASE}/?page=${page}`))
     );
     results.forEach((r, i) => {
       if (r.status === 'fulfilled') equities.push(...parsePage(r.value));
-      else logger.warn(`equity list page ${pages[i]} failed: ${r.reason?.message}`);
+      else logger.warn(`AFX equity list page ${pages[i]} failed: ${r.reason?.message}`);
     });
 
-    // De-duplicate by ticker (pages can overlap).
     const byTicker = new Map();
     for (const e of equities) if (!byTicker.has(e.ticker)) byTicker.set(e.ticker, e);
     const list = [...byTicker.values()].sort((a, b) => a.ticker.localeCompare(b.ticker));
-
-    // Live scraping can fail entirely (e.g. the source blocks a serverless
-    // datacenter IP). Fall back to the bundled snapshot so the app still works.
-    if (list.length === 0) {
-      marketSource = 'cached';
-      logger.warn(`Live equity list empty; serving ${seedEquities.length} seeded equities`);
-      return seedEquities;
-    }
-    marketSource = 'live';
-    logger.info(`Fetched ${list.length} NGX equities from AFX`);
+    if (list.length) logger.info(`Fetched ${list.length} NGX equities from AFX`);
     return list;
   });
 }
 
 /**
- * Scrape a single ticker page: quote + recent daily history.
- * History table layout: Date | Volume | Close | Change | Change%
- * @returns {Promise<{ticker,name,sector,price,change,bars:Array<{date,close,volume}>}>}
+ * Scrape one ticker page: quote + recent daily history.
+ * History table: Date | Volume | Close | Change | Change%
+ * @returns {Promise<{ticker,name,sector,price,bars,source}>} throws on failure/empty
  */
-export async function fetchTicker(ticker) {
+export async function fetchTickerAFX(ticker) {
   const slug = ticker.toLowerCase();
   const upper = ticker.toUpperCase();
-
-  // Fall back to the bundled snapshot when live scraping fails or is empty.
-  const useSeed = (reason) => {
-    const seed = seedTicker(upper);
-    if (!seed) return null;
-    logger.warn(`Ticker ${upper}: ${reason}; serving seeded history (${seed.bars.length} bars)`);
-    const last = seed.bars[seed.bars.length - 1];
-    return {
-      ticker: upper,
-      name: seed.name || upper,
-      sector: seed.sector || null,
-      price: last ? last.close : null,
-      bars: seed.bars,
-      source: 'cached',
-    };
-  };
-
   return tickerCache.wrap(slug, async () => {
-    let html;
-    try {
-      html = await fetchText(`${BASE}/${slug}.html`);
-    } catch (err) {
-      const seeded = useSeed(`live fetch failed (${err.message})`);
-      if (seeded) return seeded;
-      throw err;
-    }
+    const html = await fetchText(`${BASE}/${slug}.html`);
     const $ = cheerio.load(html);
 
     const heading = $('h1').first().text().trim(); // "GTCO - Guaranty Trust Holding"
     const name = heading.includes('-') ? heading.split('-').slice(1).join('-').trim() : heading;
-    // AFX shows a short sector label (e.g. "Commercial Banking") as a brief <p>;
-    // longer first paragraphs are the company profile, so ignore those.
     const firstP = $('main article p').first().text().trim();
     const sector = firstP && firstP.length <= 60 ? firstP : null;
 
@@ -128,7 +90,6 @@ export async function fetchTicker(ticker) {
         .find('thead th')
         .map((_, th) => $(th).text().trim().toLowerCase())
         .get();
-      // The daily history table has a Date column and a Close column.
       if (!headers.some((h) => h.includes('date')) || !headers.some((h) => h.includes('close')))
         return;
       const dateIdx = headers.findIndex((h) => h.includes('date'));
@@ -149,21 +110,9 @@ export async function fetchTicker(ticker) {
     });
 
     bars.sort((a, b) => a.date.localeCompare(b.date));
-
-    // No rows parsed (source blocked or HTML changed) → seed fallback.
-    if (bars.length === 0) {
-      const seeded = useSeed('live page returned no price rows');
-      if (seeded) return seeded;
-    }
+    if (bars.length === 0) throw new Error(`AFX returned no price rows for ${upper}`);
 
     const last = bars[bars.length - 1];
-    return {
-      ticker: upper,
-      name,
-      sector,
-      price: last ? last.close : null,
-      bars,
-      source: 'live',
-    };
+    return { ticker: upper, name, sector, price: last ? last.close : null, bars, source: 'live' };
   });
 }

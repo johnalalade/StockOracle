@@ -113,16 +113,45 @@ LSTM later (without touching the fusion layer) once the history store has accumu
 
 ---
 
-## Data freshness & getting live NGX data (important)
+## Market data: provider chain
 
-**The catch:** the free live price source (AFX) **blocks datacenter IP ranges** — Vercel, Render,
-GitHub runners, etc. — while serving normal residential connections fine. And no free market-data
-API covers the NGX (verified: Twelve Data returns 0 Nigerian symbols; Alpha Vantage / FMP have no
-NGX coverage). So on Vercel, live scraping fails and the app serves a **bundled snapshot** with a
-"📦 Cached NGX snapshot" badge. **News/sentiment is always live** (Google News works from Vercel).
+Prices resolve through a three-tier chain (first success wins), so the app is both **live where
+possible** and **always responsive**:
 
-**Refreshing the snapshot (covers all listed tickers):** run this from your own machine (a
-residential IP AFX will serve), then commit + redeploy:
+```
+1. EODHD        — primary live source; works from Vercel/datacenters (needs API key)
+2. AFX scrape   — free fallback; works from residential/local IPs only
+3. Seed snapshot — bundled offline fallback (server/src/seed/*.js)
+```
+
+The `/api/health` `marketProvider` field and the header badge ("Live NGX data · EODHD",
+"Live NGX data", or "📦 Cached NGX snapshot") show which tier is active. **News/sentiment is always
+live** (Google News works everywhere).
+
+**Why the chain exists:** the free source (AFX) **blocks datacenter IP ranges** — Vercel, Render,
+GitHub runners — while serving residential connections fine. And no *free* API covers the NGX
+(verified: Twelve Data returns 0 Nigerian symbols; Alpha Vantage / FMP have none). So for live data
+on Vercel you need EODHD (or you fall back to the snapshot).
+
+### Enabling EODHD (recommended for live data on Vercel)
+
+1. Get a key at [eodhd.com](https://eodhd.com) on a plan that includes the Nigerian Exchange.
+2. Set env vars (locally in `server/.env`, and in **Vercel → Settings → Environment Variables**):
+   ```
+   EODHD_API_KEY=your_key
+   EODHD_EXCHANGE=XNSA        # NGX; override if your plan uses a different code
+   ```
+3. Verify the key + exchange code resolve a known ticker:
+   `GET /api/debug/eodhd?ticker=GTCO` → expect `status: 200` with a `bars` count.
+   (If it 404s/errors, adjust `EODHD_EXCHANGE` — list codes via
+   `https://eodhd.com/api/exchange-symbol-list/XNSA?api_token=YOUR_KEY&fmt=json`.)
+
+EODHD returns **deep daily OHLCV**, so with it enabled the technical indicators and the walk-forward
+backtest become far more meaningful than the ~10 days AFX exposes.
+
+### Refreshing the free snapshot (no API key)
+
+Run from your own machine (a residential IP AFX will serve), then commit + redeploy:
 
 ```bash
 npm run seed:refresh              # refresh the whole NGX list + histories
@@ -131,14 +160,6 @@ npm run seed:refresh -- GTCO MTNN # or just specific tickers
 
 It writes `server/src/seed/{equities,history}.js`, only ever *adding* coverage (safe to re-run to
 fill gaps). Commit those files and Vercel redeploys with the fresh snapshot.
-
-**If you want truly live data for every ticker, pick one:**
-
-| Option | Live? | All tickers? | Cost | Notes |
-| ------ | ----- | ------------ | ---- | ----- |
-| **Snapshot refresh** (`seed:refresh`, above) | Daily-ish (when you run it) | ✅ | Free | All-on-Vercel, no extra infra. Simplest. |
-| **Paid market-data API** (e.g. **EODHD**, exchange `XNSA`) | ✅ real-time-ish | ✅ | ~$20+/mo | Datacenter-friendly. Wire as a provider tried before AFX. Verify NGX plan coverage. |
-| **Run the backend on a residential/unblocked host** | ✅ | ✅ | Free–low | Only works from an IP AFX doesn't block (most datacenters are blocked). |
 
 ---
 

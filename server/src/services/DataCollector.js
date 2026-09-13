@@ -1,4 +1,4 @@
-import { fetchEquityList, fetchTicker } from '../providers/ngxMarketProvider.js';
+import { fetchEquityList, fetchTicker } from './marketData.js';
 import { fetchNews } from '../providers/newsProvider.js';
 import { historyStore } from '../store/historyStore.js';
 import { cleanBars } from './Preprocessor.js';
@@ -48,12 +48,14 @@ export async function getPriceHistory(ticker) {
     throw e;
   }
   if (t.bars?.length) historyStore.merge(ticker, t.bars);
-  // The persisted series is the union of every scrape we've ever done.
+  // The persisted series is the union of every fetch we've ever done.
   const merged = cleanBars(historyStore.get(ticker));
   const bars = merged.length >= (t.bars?.length || 0) ? merged : cleanBars(t.bars || []);
+  // EODHD's price endpoint omits the company name; backfill from the list.
+  const name = t.name || listNameMap?.get(t.ticker) || t.ticker;
   return {
     ticker: t.ticker,
-    name: t.name,
+    name,
     sector: t.sector,
     price: t.price,
     bars,

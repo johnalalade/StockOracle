@@ -17,7 +17,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fetchEquityList, fetchTicker } from '../src/providers/ngxMarketProvider.js';
+// The snapshot is built from AFX specifically (free, residential-friendly),
+// independent of any EODHD key, so it remains a zero-cost offline fallback.
+import {
+  fetchEquityListAFX as fetchEquityList,
+  fetchTickerAFX as fetchTicker,
+} from '../src/providers/ngxMarketProvider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(__dirname, '../src/seed');
